@@ -1331,7 +1331,7 @@ body{
     <div class="center"><span class="stepPill">③ かんたん記録</span><h2>学習記録を入力</h2></div>
     <div class="grid2"><div><label>日付</label><input id="manualDate" type="date"></div><div><label>科目</label><select id="manualSubject"></select></div></div>
     <label>学習時間</label>
-    <div class="grid2"><div><select id="manualHours"></select></div><div><select id="manualMins"></select></div></div>
+    <div class="grid2"><div><label>開始時刻</label><input id="manualStartTime" type="time"></div><div><label>終了時刻</label><input id="manualEndTime" type="time"></div></div>
     <div class="small manualTotalNote" id="manualTotalNote">合計：0分</div>
     <label>集中度</label><div class="starRow" id="manualFocusStars"></div><div class="small" id="manualFocusLabel">3：ふつう</div>
     <label>達成度</label><div class="starRow" id="manualAchievementStars"></div><div class="small" id="manualAchievementLabel">3：ふつう</div>
@@ -1744,6 +1744,13 @@ function chooseManualMode(){
   updateManualTotalNote();
   goScreen('manualScreen');
 }
+function timeStrToMinutes(s){
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim());
+  if(!m) return null;
+  const h = Number(m[1]), mm = Number(m[2]);
+  if(!Number.isInteger(h) || !Number.isInteger(mm) || h < 0 || h > 23 || mm < 0 || mm > 59) return null;
+  return h * 60 + mm;
+}
 function fillSubjectSelects(){
   ['manualSubject','subject','editSubject'].forEach(id=>{
     const el = $(id);
@@ -1755,35 +1762,33 @@ function fillSubjectSelects(){
     });
   });
 }
-function fillManualTimeSelects(){
-  const h = $('manualHours'), m = $('manualMins');
-  if(!h || !m || h.options.length) return;
-  for(let i=0;i<=23;i++){
-    const opt = document.createElement('option');
-    opt.value = String(i); opt.textContent = i + '時間';
-    h.appendChild(opt);
-  }
-  for(let i=0;i<60;i+=5){
-    const opt = document.createElement('option');
-    opt.value = String(i); opt.textContent = i + '分';
-    m.appendChild(opt);
-  }
-  h.onchange = updateManualTotalNote;
-  m.onchange = updateManualTotalNote;
+function bindManualTimeInputs(){
+  const s = $('manualStartTime'), e = $('manualEndTime');
+  if(!s || !e || s.dataset.bound) return;
+  s.dataset.bound = '1';
+  s.onchange = updateManualTotalNote;
+  e.onchange = updateManualTotalNote;
 }
 function manualTotalMinutes(){
-  const h = Number($('manualHours').value || 0);
-  const m = Number($('manualMins').value || 0);
-  if(!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || m < 0) return 0;
-  return h * 60 + m;
+  const startMin = timeStrToMinutes($('manualStartTime').value);
+  const endMin = timeStrToMinutes($('manualEndTime').value);
+  if(startMin === null || endMin === null) return 0;
+  const diff = endMin - startMin;
+  return diff > 0 ? diff : 0;
 }
 function updateManualTotalNote(){
+  const startMin = timeStrToMinutes($('manualStartTime').value);
+  const endMin = timeStrToMinutes($('manualEndTime').value);
+  if(startMin !== null && endMin !== null && endMin <= startMin){
+    $('manualTotalNote').textContent = '終了時刻は開始時刻より後にしてください。';
+    return;
+  }
   const total = manualTotalMinutes();
   $('manualTotalNote').textContent = '合計：' + (total > 0 ? safeDisplayMinutes(total) : '0分');
 }
 function resetManualForm(){
-  $('manualHours').value = '0';
-  $('manualMins').value = '0';
+  $('manualStartTime').value = '';
+  $('manualEndTime').value = '';
   $('manualContent').value = '';
   $('manualComment').value = '';
   $('manualDate').value = todayISO();
@@ -1803,8 +1808,14 @@ let manualSending = false;
 async function submitManualRecord(){
   if(manualSending) return;
   if(!appState.name){ setMsg('manualMsg','名前が設定されていません。最初の画面からやり直してください。','err'); return; }
-  const minutes = manualTotalMinutes();
-  if(!Number.isInteger(minutes) || minutes < 1){ setMsg('manualMsg','学習時間を1分以上で選んでください。','err'); return; }
+  const startVal = $('manualStartTime').value;
+  const endVal = $('manualEndTime').value;
+  const startMin = timeStrToMinutes(startVal);
+  const endMin = timeStrToMinutes(endVal);
+  if(startMin === null || endMin === null){ setMsg('manualMsg','開始時刻と終了時刻を入力してください。','err'); return; }
+  if(endMin <= startMin){ setMsg('manualMsg','終了時刻は開始時刻より後にしてください。','err'); return; }
+  const minutes = endMin - startMin;
+  if(!Number.isInteger(minutes) || minutes < 1){ setMsg('manualMsg','学習時間を1分以上で入力してください。','err'); return; }
   if(minutes > 1440){ setMsg('manualMsg','学習時間は1日（24時間）以内で入力してください。','err'); return; }
   const dateVal = $('manualDate').value || todayISO();
   if(!/^\d{4}-\d{2}-\d{2}$/.test(dateVal)){ setMsg('manualMsg','日付を正しく選択してください。','err'); return; }
@@ -1820,8 +1831,8 @@ async function submitManualRecord(){
     name:appState.name,
     grade:appState.grade,
     subject:$('manualSubject').value,
-    startTime:'',
-    endTime:'',
+    startTime:startVal,
+    endTime:endVal,
     minutes:String(minutes),
     focus:String(appState.manualFocus || 3),
     achievement:String(appState.manualAchievement || 3),
@@ -2134,11 +2145,14 @@ function recordMethodOf(r){
 }
 function timeCellHtml(r){
   const method = recordMethodOf(r);
-  if(method === 'manual'){
-    return '<span class="methodPill manual">手入力</span>';
+  const badge = method === 'manual' ? '<span class="methodPill manual">手入力</span>' : '<span class="methodPill">タイマー</span>';
+  const st = safeDisplayTime(r['入室時間']);
+  const et = safeDisplayTime(r['退室時間']);
+  if(!st && !et){
+    return badge;
   }
-  const times = escapeHtml(safeDisplayTime(r['入室時間'])) + '-' + escapeHtml(safeDisplayTime(r['退室時間']));
-  return `<div class="timeCellStack"><span class="timeReadable">${times}</span><span class="methodPill">タイマー</span></div>`;
+  const times = escapeHtml(st) + '-' + escapeHtml(et);
+  return `<div class="timeCellStack"><span class="timeReadable">${times}</span>${badge}</div>`;
 }
 
 function setSelectValue(id, value){
@@ -2160,8 +2174,6 @@ function openEditModal(idx){
   if(!r) return;
   const method = recordMethodOf(r);
   $('editMethodNote').innerHTML = `記録方法：<span class="methodPill${method === 'manual' ? ' manual' : ''}">${RECORD_METHOD_LABELS[method]}</span>`;
-  $('editStartWrap').classList.toggle('hide', method === 'manual');
-  $('editEndWrap').classList.toggle('hide', method === 'manual');
   $('editId').value = r['ID'] || '';
   $('editDate').value = formatDateForCompare(r['日付']) || todayISO();
   $('editName').value = r['名前'] || '';
@@ -2476,7 +2488,7 @@ function renderDetailPanel(){
 
 function init(){
   fillSubjectSelects();
-  fillManualTimeSelects();
+  bindManualTimeInputs();
   loadState();
   cleanFinishedStateOnLoad();
   $('classroomName').textContent = '教室共通版';
