@@ -1,0 +1,17 @@
+Study Room アプリ完結版
+
+1. Supabaseで無料プロジェクトを1つ作成します。
+2. SQL Editorを開き、setup.sqlを貼り付けて実行します。
+3. Project Settings → APIからProject URLとanon public keyを確認します。
+4. index.htmlのSUPABASE_URLとSUPABASE_ANON_KEYへ貼り付けます。
+5. index.html、manifest.webmanifest、sw.js、iconsフォルダをGitHubへ置きます。
+
+先生も生徒も同じアプリを使います。
+生徒は教室コードを入力して「タイマー」または「あとから入力」で記録します。
+先生は右上の「ログ確認」から教室コード・確認ID・パスワードを入力します。
+
+教室追加はSupabaseのSQL Editorで次を実行します。
+insert into public.classrooms(code,name,teacher_id,password_hash)
+values('KYOWA01','共和教室','teacher',crypt('任意のパスワード',gen_salt('bf')));
+
+教室コードは半角英大文字・数字を推奨します。教室ごとに別のパスワードを設定してください。
