@@ -57,7 +57,7 @@ alter table public.teacher_sessions enable row level security;
 revoke all on public.classrooms, public.study_records, public.teacher_sessions from anon, authenticated;
 
 create or replace function public.study_room_api(p_action text, p_data jsonb default '{}'::jsonb)
-returns jsonb language plpgsql security definer set search_path=public as $$
+returns jsonb language plpgsql security definer set search_path=public, extensions as $$
 declare
   c public.classrooms%rowtype; r public.study_records%rowtype;
   sid uuid; tok uuid; valid_room uuid; rows jsonb;
